@@ -7,10 +7,37 @@
 #include <unistd.h>
 #include <fstream>
 #include <chrono>
+#include <map>
+#include <math.h>
+
+std::map<std::string, std::string> parseRequest(std::string req)
+{
+    std::stringstream ss(req);
+    std::string next;
+    
+    // get type of request(GET, POST ...)
+    ss >> next;
+    std::map<std::string, std::string> parsedReq;
+    parsedReq["Type"] = next;
+    
+    // get url
+    ss >> next;
+    parsedReq["URL"] = next; 
+
+    // get range
+    if(req.find("Range: ") != std::string::npos)
+    {
+        ss.seekg(req.find("Range: "));
+        ss >> next >> next;
+        parsedReq["Range"] = next.substr(next.find('=') + 1, next.find('-') - 6);
+    }
+
+    return parsedReq;
+}
 
 int main()
 {
-    std::string port = "8080";    // номер порта нашего HTTP сервера
+    std::string port = "8000";    // номер порта нашего HTTP сервера
     struct addrinfo* addr = NULL; // структура, которая будет хранить адрес слушающего сокета
     struct addrinfo hints;
     int listen_socket_fd; // дескриптор сокета сервера
@@ -100,7 +127,6 @@ int main()
 
         result = recv(client_socket_fd, buf, max_client_buffer_size, 0);
 
-
         if (result == -1) {
             // ошибка получения данных
             server_log << "!!! ERROR !!! " << "recv failed" << std::endl;
@@ -119,6 +145,7 @@ int main()
             // Для удобства работы запишем полученные данные
             // в stringstrem request
             request << buf;
+            auto parsedRequest = parseRequest(request.str());
             // Данные приходят в виде HTTP запроса
             // Первая строка имеет вид: вид запроса(GET, POST ...) url
             std::string s;
@@ -129,7 +156,7 @@ int main()
                 break;
             }
             // Если запрашивается видео
-            if(s.find(".mp4") != std::string::npos)
+            if(s.find(".webm") != std::string::npos)
             {
                 std::ifstream video("../public" + s);
                 server_log << "Sending video: " << s << std::endl;
@@ -142,24 +169,35 @@ int main()
                 }
 
                 // Формируем весь ответ вместе с заголовками
-                response << "HTTP/1.1 200 OK\r\n"
+                // Закоментированная часть для отправки всего файла сразу
+                /*response << "HTTP/1.1 200 OK\r\n"
                 << "Version: HTTP/1.1\r\n"
-                << "Content-Type: video/mp4"
+                << "Content-Type: video/webm"
                 << "Content-Length: " << response_body.str().length()
                 << "\r\n\r\n"
-                << response_body.str();
-                /*char buf[1024];
-                response_body.seekg(already_read);
-                int r = response_body.readsome(buf, 1024);
-                std::cout << "Read from response body: " << r << " Alredy read: " << already_read << std::endl;
-                already_read += 1024;
-                response << "HTTP/1.1 206 Partial Content\r\n"
-                << "Content-Range: bytes " << (already_read - 1024) << "-" << (already_read - 1) << "/" << response_body.str().length() << "\r\n"
-                << "Accept-Ranges: bytes\r\n"
-                << "Content-Type: video/mp4\r\n"
-                << "Content-Length: " << sizeof(buf)
-                << "\r\n\r\n"
                 << response_body.str();*/
+
+                // отправка файла по частям
+                unsigned long read_chunk = std::pow(2, 20);
+                std::string read_str;
+                if(std::stoi(parsedRequest["Range"]) + read_chunk <= response_body.str().length())
+                {
+                    read_str = response_body.str().substr(std::stoi(parsedRequest["Range"]), read_chunk);
+                } else {
+                    read_str = response_body.str().substr(std::stoi(parsedRequest["Range"]), response_body.str().length() - std::stoi(parsedRequest["Range"]));
+                }
+
+                server_log << "Bytes read: " << read_str.length()  << " In buf: " << read_str.length() << std::endl;
+                response << "HTTP/1.1 206 Partial Content\r\n"
+                << "Content-Range: bytes " << parsedRequest["Range"] << "-" << (std::stoi(parsedRequest["Range"]) + read_str.length() - 1) << "/" << response_body.str().length() << "\r\n"
+                << "Accept-Ranges: bytes\r\n"
+                << "Content-Type: video/webm\r\n"
+                << "Content-Length: " << read_str.length()
+                << "\r\n\r\n";
+
+                server_log << "Response header\n" << response.str() << std::endl << std::endl;
+
+                response << read_str;
 
                 // Отправляем ответ клиенту с помощью функции send
                 result = send(client_socket_fd, response.str().c_str(), response.str().length(), 0);
