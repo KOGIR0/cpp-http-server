@@ -9,6 +9,7 @@
 #include <chrono>
 #include <map>
 #include <math.h>
+#include <exception>
 
 std::map<std::string, std::string> parseRequest(std::string req)
 {
@@ -35,6 +36,61 @@ std::map<std::string, std::string> parseRequest(std::string req)
     return parsedReq;
 }
 
+class FileOpenException: public std::exception
+{
+public:
+    const char* what()
+    {
+        return "Error opening file";
+    }
+};
+
+class serverLog
+{
+public:
+    serverLog(){};
+    serverLog(const std::string& filename)
+    {
+        server_log.open(filename);
+        if(server_log)
+        {
+            auto date = std::chrono::system_clock::now();
+            std::time_t date_time = std::chrono::system_clock::to_time_t(date);
+            std::string todays_date(std::ctime(&date_time));
+            server_log << "<<< SERVER WORK START >>>.\n Date: " << todays_date << std::endl;
+        } else {
+            throw new FileOpenException();
+        }
+    }
+
+    void open(const std::string& filename)
+    {
+        server_log.open(filename);
+        if(server_log)
+        {
+            auto date = std::chrono::system_clock::now();
+            std::time_t date_time = std::chrono::system_clock::to_time_t(date);
+            std::string todays_date(std::ctime(&date_time));
+            server_log << "<<< SERVER WORK START >>>.\n Date: " << todays_date << std::endl;
+        } else {
+            throw new FileOpenException();
+        }  
+    }
+
+    void write(const std::string& s)
+    {
+        server_log << s << std::endl;
+    }
+
+    ~serverLog()
+    {
+        server_log.close();
+    }
+
+private:
+    std::ofstream server_log;
+};
+
 int main()
 {
     std::string port = "8000";    // номер порта нашего HTTP сервера
@@ -42,18 +98,16 @@ int main()
     struct addrinfo hints;
     int listen_socket_fd; // дескриптор сокета сервера
     int already_read = 0;
+    serverLog log;
 
     // создаем лог фаил
-    std::ofstream server_log("server.log");
-
-    if(server_log)
+    try
     {
-        auto date = std::chrono::system_clock::now();
-        std::time_t date_time = std::chrono::system_clock::to_time_t(date);
-        std::string todays_date(std::ctime(&date_time));
-        server_log << "<<< SERVER WORK START >>>.\n Date: " << todays_date << std::endl;
-    } else {
-        std::cerr << "Unable to open log file" << std::endl;
+        log.open("server.log");
+    }
+    catch(FileOpenException& e)
+    {
+        std::cerr << e.what() << '\n';
         return 1;
     }
 
@@ -70,7 +124,7 @@ int main()
     // Если инициализация структуры адреса завершилась с ошибкой,
     // выведем сообщением об этом и завершим выполнение программы
     if (result != 0) {
-        server_log << "!!! ERROR !!! " << "getaddrinfo failed." << "\n";
+        log.write("!!! ERROR !!! getaddrinfo failed.");
         return 1;
     }
 
@@ -79,7 +133,7 @@ int main()
     // Если создание сокета завершилось с ошибкой, выводим сообщение,
     // освобождаем память, выделенную под структуру addr
     if (listen_socket_fd == -1) {
-        server_log << "!!! ERROR !!! " << "Error creating socket" << std::endl;
+        log.write("!!! ERROR !!! Error creating socket");
         freeaddrinfo(addr);
         return 1;
     }
@@ -91,7 +145,7 @@ int main()
     // об ошибке, освобождаем память, выделенную под структуру addr.
     // и закрываем открытый сокет.
     if (result == -1) {
-        server_log << "!!! ERROR !!! " << "bind error" << std::endl;
+        log.write("!!! ERROR !!! bind error");
         freeaddrinfo(addr);
         close(listen_socket_fd);
         return 1;
@@ -99,7 +153,7 @@ int main()
 
     // Инициализируем слушающий сокет
     if (listen(listen_socket_fd, SOMAXCONN) == -1) {
-        server_log << "!!! ERROR !!! " << "listen failed with error" << std::endl;
+        log.write("!!! ERROR !!! listen failed with error");
         close(listen_socket_fd);
         return 1;
     }
@@ -118,7 +172,7 @@ int main()
         int client_socket_fd = accept(listen_socket_fd, NULL, NULL);
         
         if (client_socket_fd == -1) {
-            server_log << "!!! ERROR !!! " << "accept failed" << std::endl;
+            log.write("!!! ERROR !!! accept failed");
             return 1;
         }
 
@@ -129,54 +183,81 @@ int main()
 
         if (result == -1) {
             // ошибка получения данных
-            server_log << "!!! ERROR !!! " << "recv failed" << std::endl;
+            log.write("!!! ERROR !!! recv failed");
             close(client_socket_fd);
         } else if (result == 0) {
             // соединение закрыто клиентом
-            server_log << "!!! ERROR !!! " << "connection closed..." << std::endl;
+            log.write("!!! ERROR !!! connection closed...");
         } else if (result > 0) {
-            server_log << "//// REQUEST START \\\\\\\\" << std::endl;
+            log.write("//// REQUEST START \\\\\\\\");
             // Мы знаем фактический размер полученных данных, поэтому ставим метку конца строки
             // В буфере запроса.
             buf[result] = '\0';
-            server_log << "Data recieved" << std::endl;
-            server_log << buf << std::endl;
+            log.write("Data recieved");
+            log.write(buf);
 
             // Для удобства работы запишем полученные данные
             // в stringstrem request
             request << buf;
             auto parsedRequest = parseRequest(request.str());
-            // Данные приходят в виде HTTP запроса
-            // Первая строка имеет вид: вид запроса(GET, POST ...) url
+            
             std::string s;
-            request >> s >> s;
-            server_log << "Request url " << s << std::endl;
+            std::cout << parsedRequest["URL"] << std::endl;
+            s = parsedRequest["URL"];
+            log.write("Request url " + s);
             if(s == "/end")
             {
                 break;
             }
-            // Если запрашивается видео
-            if(s.find(".webm") != std::string::npos)
+            // Если запрашивается видео mp4
+            if(s.find(".mp4") != std::string::npos)
             {
                 std::ifstream video("../public" + s);
-                server_log << "Sending video: " << s << std::endl;
+                log.write("Sending video: " + s);
                 if(video)
                 {
                     response_body << video.rdbuf();
                     video.close();
                 } else {
-                    server_log << "!!! ERROR !!! " << "Unable to open video file" << std::endl;
+                    log.write("!!! ERROR !!! Unable to open video file");
                 }
 
                 // Формируем весь ответ вместе с заголовками
-                // Закоментированная часть для отправки всего файла сразу
-                /*response << "HTTP/1.1 200 OK\r\n"
-                << "Version: HTTP/1.1\r\n"
-                << "Content-Type: video/webm"
-                << "Content-Length: " << response_body.str().length()
-                << "\r\n\r\n"
-                << response_body.str();*/
+                // отправка файла по частям
+                unsigned long read_chunk = std::pow(2, 20) * 10; // 10Mb данных
+                std::string read_str;
+                if(std::stoi(parsedRequest["Range"]) + read_chunk <= response_body.str().length())
+                {
+                    read_str = response_body.str().substr(std::stoi(parsedRequest["Range"]), read_chunk);
+                } else {
+                    read_str = response_body.str().substr(std::stoi(parsedRequest["Range"]), response_body.str().length() - std::stoi(parsedRequest["Range"]));
+                }
 
+                log.write("Bytes read: " + std::to_string(read_str.length()) + " Buf size: " + std::to_string(read_str.length()));
+                response << "HTTP/1.1 206 Partial Content\r\n"
+                << "Content-Range: bytes " << parsedRequest["Range"] << "-" << (std::stoi(parsedRequest["Range"]) + read_str.length() - 1) << "/" << response_body.str().length() << "\r\n"
+                << "Accept-Ranges: bytes\r\n"
+                << "Content-Type: video/mp4\r\n"
+                << "Content-Length: " << read_str.length()
+                << "\r\n\r\n";
+
+                log.write("Response header\n" + response.str() + '\n');
+
+                response << read_str;
+            }
+            else if(s.find(".webm") != std::string::npos)
+            {
+                std::ifstream video("../public" + s);
+                log.write("Sending video: " + s);
+                if(video)
+                {
+                    response_body << video.rdbuf();
+                    video.close();
+                } else {
+                    log.write("!!! ERROR !!! Unable to open video file");
+                }
+
+                // Формируем весь ответ вместе с заголовками
                 // отправка файла по частям
                 unsigned long read_chunk = std::pow(2, 20);
                 std::string read_str;
@@ -187,7 +268,7 @@ int main()
                     read_str = response_body.str().substr(std::stoi(parsedRequest["Range"]), response_body.str().length() - std::stoi(parsedRequest["Range"]));
                 }
 
-                server_log << "Bytes read: " << read_str.length()  << " In buf: " << read_str.length() << std::endl;
+                log.write("Bytes read: " + std::to_string(read_str.length()) + " In buf: " + std::to_string(read_str.length()));
                 response << "HTTP/1.1 206 Partial Content\r\n"
                 << "Content-Range: bytes " << parsedRequest["Range"] << "-" << (std::stoi(parsedRequest["Range"]) + read_str.length() - 1) << "/" << response_body.str().length() << "\r\n"
                 << "Accept-Ranges: bytes\r\n"
@@ -195,24 +276,22 @@ int main()
                 << "Content-Length: " << read_str.length()
                 << "\r\n\r\n";
 
-                server_log << "Response header\n" << response.str() << std::endl << std::endl;
+                log.write("Response header\n" + response.str() + '\n');
 
                 response << read_str;
-
-                // Отправляем ответ клиенту с помощью функции send
-                result = send(client_socket_fd, response.str().c_str(), response.str().length(), 0);
-            } else if(s.find(".html") != std::string::npos)
+            }
+            else if(s.find(".html") != std::string::npos)
             {
                 // Данные успешно получены
                 // формируем тело ответа из html файла
                 std::ifstream file("../public/html" + s);
                 if(file)
                 {
-                    server_log << "Sending html file: index.html" << std::endl;
+                    log.write("Sending html file: " + s);
                     response_body << file.rdbuf();
                     file.close();
                 } else {
-                    server_log << "!!! ERROR !!! " << "Unable to open file" << std::endl;
+                    log.write("!!! ERROR !!! Unable to open file");
                 }
 
                 // Формируем весь ответ вместе с заголовками
@@ -222,9 +301,6 @@ int main()
                     << "Content-Length: " << response_body.str().length()
                     << "\r\n\r\n"
                     << response_body.str();
-
-                // Отправляем ответ клиенту с помощью функции send
-                result = send(client_socket_fd, response.str().c_str(), response.str().length(), 0);
             }
             else if (s.find(".css") != std::string::npos)
             {
@@ -233,11 +309,11 @@ int main()
                 std::ifstream file("../public" + s);
                 if(file)
                 {
-                    server_log << "Sending html file: index.css" << std::endl;
+                    log.write("Sending html file: " + s);
                     response_body << file.rdbuf();
                     file.close();
                 } else {
-                    server_log << "!!! ERROR !!! " << "Unable to open style file" << std::endl;
+                    log.write("!!! ERROR !!!  Unable to open style file");
                 }
 
                 // Формируем весь ответ вместе с заголовками
@@ -247,26 +323,45 @@ int main()
                     << "Content-Length: " << response_body.str().length()
                     << "\r\n\r\n"
                     << response_body.str();
-
-                // Отправляем ответ клиенту с помощью функции send
-                result = send(client_socket_fd, response.str().c_str(), response.str().length(), 0);
             }
+            else if(s.find(".js") != std::string::npos)
+            {
+                // Данные успешно получены
+                // формируем тело ответа из html файла
+                std::ifstream file("../public" + s);
+                if(file)
+                {
+                    log.write("Sending html file: " + s);
+                    response_body << file.rdbuf();
+                    file.close();
+                } else {
+                    log.write("!!! ERROR !!! Unable to open style file");
+                }
 
-            server_log << "\\\\\\\\ REQUEST END ////" << std::endl;
+                // Формируем весь ответ вместе с заголовками
+                response << "HTTP/1.1 200 OK\r\n"
+                    << "Version: HTTP/1.1\r\n"
+                    << "Content-Type: text/js\r\n"
+                    << "Content-Length: " << response_body.str().length()
+                    << "\r\n\r\n"
+                    << response_body.str();
+            }
+            // Отправляем ответ клиенту с помощью функции send
+            result = send(client_socket_fd, response.str().c_str(), response.str().length(), 0);
 
+            // произошла ошибка при отправле данных
             if (result == -1) {
-                // произошла ошибка при отправле данных
-                server_log << "!!! ERROR !!! " << "send failed " << std::endl;
+                log.write("!!! ERROR !!! send failed");
             }
-            // Закрываем соединение к клиентом
+            log.write("\\\\\\\\ REQUEST END ////");
+            // Закрываем соединение с клиентом
             close(client_socket_fd);
         }
     }
 
     // Убираем за собой
-    server_log << "<<< SERVER WORK END >>>" << std::endl;
+    log.write("<<< SERVER WORK END >>>");
     close(listen_socket_fd);
     freeaddrinfo(addr);
-    server_log.close();
     return 0;
 }
