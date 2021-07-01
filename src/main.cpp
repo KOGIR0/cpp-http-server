@@ -6,10 +6,10 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <fstream>
-#include <chrono>
 #include <map>
 #include <math.h>
-#include <exception>
+
+#include "serverLog.h"
 
 std::map<std::string, std::string> parseRequest(std::string req)
 {
@@ -23,7 +23,7 @@ std::map<std::string, std::string> parseRequest(std::string req)
     
     // get url
     ss >> next;
-    parsedReq["URL"] = next; 
+    parsedReq["URL"] = next;
 
     // get range
     if(req.find("Range: ") != std::string::npos)
@@ -36,69 +36,36 @@ std::map<std::string, std::string> parseRequest(std::string req)
     return parsedReq;
 }
 
-class FileOpenException: public std::exception
+std::string getPort()
 {
-public:
-    const char* what()
+    std::ifstream config("../.config");
+    std::string port = "3000";
+    if(config)
     {
-        return "Error opening file";
-    }
-};
-
-class serverLog
-{
-public:
-    serverLog(){};
-    serverLog(const std::string& filename)
-    {
-        server_log.open(filename);
-        if(server_log)
+        std::string s;
+        config >> s;
+        if(s == "PORT")
         {
-            auto date = std::chrono::system_clock::now();
-            std::time_t date_time = std::chrono::system_clock::to_time_t(date);
-            std::string todays_date(std::ctime(&date_time));
-            server_log << "<<< SERVER WORK START >>>.\n Date: " << todays_date << std::endl;
-        } else {
-            throw new FileOpenException();
+            config >> s;
+            port = s;
         }
     }
-
-    void open(const std::string& filename)
-    {
-        server_log.open(filename);
-        if(server_log)
-        {
-            auto date = std::chrono::system_clock::now();
-            std::time_t date_time = std::chrono::system_clock::to_time_t(date);
-            std::string todays_date(std::ctime(&date_time));
-            server_log << "<<< SERVER WORK START >>>.\n Date: " << todays_date << std::endl;
-        } else {
-            throw new FileOpenException();
-        }  
-    }
-
-    void write(const std::string& s)
-    {
-        server_log << s << std::endl;
-    }
-
-    ~serverLog()
-    {
-        server_log.close();
-    }
-
-private:
-    std::ofstream server_log;
-};
+    return port;
+}
 
 int main()
 {
-    std::string port = "8000";    // номер порта нашего HTTP сервера
+    std::string port = getPort();    // номер порта нашего HTTP сервера
     struct addrinfo* addr = NULL; // структура, которая будет хранить адрес слушающего сокета
     struct addrinfo hints;
     int listen_socket_fd; // дескриптор сокета сервера
     int already_read = 0;
     serverLog log;
+
+    std::map<std::string, std::string> urls {
+        {"/", "/public/html/index.html"},
+        {"/hello", "/public/html/hello.html"}
+    };
 
     // создаем лог фаил
     try
@@ -144,7 +111,8 @@ int main()
     // Если привязать адрес к сокету не удалось, то выводим сообщение
     // об ошибке, освобождаем память, выделенную под структуру addr.
     // и закрываем открытый сокет.
-    if (result == -1) {
+    if (result == -1)
+    {
         log.write("!!! ERROR !!! bind error");
         freeaddrinfo(addr);
         close(listen_socket_fd);
@@ -152,7 +120,8 @@ int main()
     }
 
     // Инициализируем слушающий сокет
-    if (listen(listen_socket_fd, SOMAXCONN) == -1) {
+    if (listen(listen_socket_fd, SOMAXCONN) == -1)
+    {
         log.write("!!! ERROR !!! listen failed with error");
         close(listen_socket_fd);
         return 1;
@@ -171,7 +140,8 @@ int main()
         // сохраняем дескриптор клиента для отправки ему сообщений
         int client_socket_fd = accept(listen_socket_fd, NULL, NULL);
         
-        if (client_socket_fd == -1) {
+        if (client_socket_fd == -1)
+        {
             log.write("!!! ERROR !!! accept failed");
             return 1;
         }
@@ -181,14 +151,19 @@ int main()
 
         result = recv(client_socket_fd, buf, max_client_buffer_size, 0);
 
-        if (result == -1) {
+        if (result == -1)
+        {
             // ошибка получения данных
             log.write("!!! ERROR !!! recv failed");
             close(client_socket_fd);
-        } else if (result == 0) {
+        }
+        else if (result == 0)
+        {
             // соединение закрыто клиентом
             log.write("!!! ERROR !!! connection closed...");
-        } else if (result > 0) {
+        }
+        else if (result > 0)
+        {
             log.write("//// REQUEST START \\\\\\\\");
             // Мы знаем фактический размер полученных данных, поэтому ставим метку конца строки
             // В буфере запроса.
@@ -224,18 +199,25 @@ int main()
 
                 // Формируем весь ответ вместе с заголовками
                 // отправка файла по частям
-                unsigned long read_chunk = std::pow(2, 20) * 10; // 10Mb данных
+                unsigned long read_chunk = std::pow(2, 10) * 500; // 10Mb данных
                 std::string read_str;
-                if(std::stoi(parsedRequest["Range"]) + read_chunk <= response_body.str().length())
+                int rangeStart = 0;
+                
+                if(parsedRequest.find("Range") != parsedRequest.end())
                 {
-                    read_str = response_body.str().substr(std::stoi(parsedRequest["Range"]), read_chunk);
+                    rangeStart = std::stoi(parsedRequest["Range"]);
+                }
+
+                if(rangeStart + read_chunk <= response_body.str().length())
+                {
+                    read_str = response_body.str().substr(rangeStart, read_chunk);
                 } else {
-                    read_str = response_body.str().substr(std::stoi(parsedRequest["Range"]), response_body.str().length() - std::stoi(parsedRequest["Range"]));
+                    read_str = response_body.str().substr(rangeStart, response_body.str().length() - rangeStart);
                 }
 
                 log.write("Bytes read: " + std::to_string(read_str.length()) + " Buf size: " + std::to_string(read_str.length()));
                 response << "HTTP/1.1 206 Partial Content\r\n"
-                << "Content-Range: bytes " << parsedRequest["Range"] << "-" << (std::stoi(parsedRequest["Range"]) + read_str.length() - 1) << "/" << response_body.str().length() << "\r\n"
+                << "Content-Range: bytes " << parsedRequest["Range"] << "-" << (rangeStart + read_str.length() - 1) << "/" << response_body.str().length() << "\r\n"
                 << "Accept-Ranges: bytes\r\n"
                 << "Content-Type: video/mp4\r\n"
                 << "Content-Length: " << read_str.length()
@@ -259,18 +241,25 @@ int main()
 
                 // Формируем весь ответ вместе с заголовками
                 // отправка файла по частям
-                unsigned long read_chunk = std::pow(2, 20);
+                unsigned long read_chunk = std::pow(2, 10) * 500;
                 std::string read_str;
-                if(std::stoi(parsedRequest["Range"]) + read_chunk <= response_body.str().length())
+                int rangeStart = 0;
+                
+                if(parsedRequest.find("Range") != parsedRequest.end())
                 {
-                    read_str = response_body.str().substr(std::stoi(parsedRequest["Range"]), read_chunk);
+                    rangeStart = std::stoi(parsedRequest["Range"]);
+                }
+
+                if(rangeStart + read_chunk <= response_body.str().length())
+                {
+                    read_str = response_body.str().substr(rangeStart, read_chunk);
                 } else {
-                    read_str = response_body.str().substr(std::stoi(parsedRequest["Range"]), response_body.str().length() - std::stoi(parsedRequest["Range"]));
+                    read_str = response_body.str().substr(rangeStart, response_body.str().length() - rangeStart);
                 }
 
                 log.write("Bytes read: " + std::to_string(read_str.length()) + " In buf: " + std::to_string(read_str.length()));
                 response << "HTTP/1.1 206 Partial Content\r\n"
-                << "Content-Range: bytes " << parsedRequest["Range"] << "-" << (std::stoi(parsedRequest["Range"]) + read_str.length() - 1) << "/" << response_body.str().length() << "\r\n"
+                << "Content-Range: bytes " << parsedRequest["Range"] << "-" << (rangeStart + read_str.length() - 1) << "/" << response_body.str().length() << "\r\n"
                 << "Accept-Ranges: bytes\r\n"
                 << "Content-Type: video/webm\r\n"
                 << "Content-Length: " << read_str.length()
@@ -280,11 +269,11 @@ int main()
 
                 response << read_str;
             }
-            else if(s.find(".html") != std::string::npos)
+            else if(urls.find(s) != urls.end())//s.find(".html") != std::string::npos
             {
                 // Данные успешно получены
                 // формируем тело ответа из html файла
-                std::ifstream file("../public/html" + s);
+                std::ifstream file(".." + urls[s]);
                 if(file)
                 {
                     log.write("Sending html file: " + s);
@@ -342,6 +331,24 @@ int main()
                 response << "HTTP/1.1 200 OK\r\n"
                     << "Version: HTTP/1.1\r\n"
                     << "Content-Type: text/js\r\n"
+                    << "Content-Length: " << response_body.str().length()
+                    << "\r\n\r\n"
+                    << response_body.str();
+            } else {
+                // url not Found
+                std::ifstream file("../public/html/constants/404.html");
+                if(file)
+                {
+                    log.write("Sending html file: 404.html");
+                    response_body << file.rdbuf();
+                    file.close();
+                } else {
+                    log.write("!!! ERROR !!! Unable to open style file");
+                }
+
+                response << "HTTP/1.1 404 Not Found\r\n"
+                    << "Version: HTTP/1.1\r\n"
+                    << "Content-Type: text/html\r\n"
                     << "Content-Length: " << response_body.str().length()
                     << "\r\n\r\n"
                     << response_body.str();
