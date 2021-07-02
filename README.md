@@ -2,4 +2,4 @@
 
 
 ## TODO
-1. Create wrapper classes 
+1. Read data from video file by chunks

@@ -8,8 +8,17 @@
 #include <fstream>
 #include <map>
 #include <math.h>
+#include <exception>
 
-#include "serverLog.h"
+#include "ServerLog.h"
+#include "Server.h"
+#include "Socket.h"
+
+#define PATH_TO_PUBLIC         "../public"
+#define PATH_TO_404_HTML       std::string(PATH_TO_PUBLIC) + "/html/constants/404.html"
+#define PATH_TO_HEADER         std::string(PATH_TO_PUBLIC) + "/html/constants/header.html"
+#define PATH_TO_RESOURCES_HTML std::string(PATH_TO_PUBLIC) + "/html/constants/resources.html"
+#define PATH_TO_CONFIG         "../.config"
 
 std::map<std::string, std::string> parseRequest(std::string req)
 {
@@ -38,34 +47,100 @@ std::map<std::string, std::string> parseRequest(std::string req)
 
 std::string getPort()
 {
-    std::ifstream config("../.config");
+    std::ifstream config(PATH_TO_CONFIG);
     std::string port = "3000";
-    if(config)
+    if(!config)
     {
+        return port;
+    }
+
+    while(!config.eof())
+    {
+        int bufSize = 1024;
+        char buf[bufSize];
+        std::stringstream line;
+        config.getline(buf, bufSize);
+        line << buf;
+
         std::string s;
-        config >> s;
+        line >> s;
         if(s == "PORT")
         {
-            config >> s;
-            port = s;
+            line >> s;
+            return s;
         }
     }
     return port;
 }
 
+std::string createHtmlPage(std::string body)
+{
+    // page header
+    std::ifstream header(PATH_TO_HEADER);
+    // *.ccs and *.js common for every page
+    std::ifstream resources(PATH_TO_RESOURCES_HTML);
+    // page start
+    std::string result = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Piki</title>";
+
+    if(header && resources)
+    {
+        std::stringstream ss;
+        // add common resources(*.css, *.js) to page head
+        ss << resources.rdbuf();
+        result += ss.str();
+
+        result += "</head><body>";  // close head and open body tags
+        
+        // add header to the page
+        ss << header.rdbuf();
+        result += ss.str();
+
+        result += body + "</body></html>"; // close body and html tags
+    }
+
+    header.close();
+    resources.close();
+
+    return result;
+}
+
+std::map<std::string, std::string> loadURLs()
+{
+    std::map<std::string, std::string> result;
+    std::ifstream config(PATH_TO_CONFIG);
+    if(!config)
+    {
+        return result;
+    }
+    
+    int bufSize = 1024;
+    char buf[bufSize];
+    std::string key, url, pathToFile;
+    while(!config.eof())
+    {
+        std::stringstream line;
+        config.getline(buf, bufSize);
+        line << buf;
+        line >> key;
+        
+        if(key == "URL")
+        {
+            line >> url >> pathToFile;
+        }
+        result[url] = pathToFile;
+    }
+    
+    return result;
+}
+
 int main()
 {
-    std::string port = getPort();    // номер порта нашего HTTP сервера
-    struct addrinfo* addr = NULL; // структура, которая будет хранить адрес слушающего сокета
-    struct addrinfo hints;
-    int listen_socket_fd; // дескриптор сокета сервера
-    int already_read = 0;
-    serverLog log;
+    std::string port = getPort(); // номер порта нашего HTTP сервера
+    std::string ip = "127.0.0.1"; // ip адресс сервера
+    ServerLog log;
+    tcp::Server* server;
 
-    std::map<std::string, std::string> urls {
-        {"/", "/public/html/index.html"},
-        {"/hello", "/public/html/hello.html"}
-    };
+    std::map<std::string, std::string> urls = loadURLs();
 
     // создаем лог фаил
     try
@@ -74,59 +149,26 @@ int main()
     }
     catch(FileOpenException& e)
     {
-        std::cerr << e.what() << '\n';
-        return 1;
-    }
-
-    hints.ai_family = AF_INET; // AF_INET определяет, что будет
-    // использоваться сеть для работы с сокетом
-    hints.ai_socktype = SOCK_STREAM; // Задаем потоковый тип сокета
-    hints.ai_protocol = IPPROTO_TCP; // Используем протокол TCP
-    hints.ai_flags = AI_PASSIVE; // Сокет будет биндиться на адрес,
-                                // чтобы принимать входящие соединения
-
-    // Инициализируем структуру, хранящую адрес сокета - addr
-    int result = getaddrinfo("127.0.0.1", port.c_str(), &hints, &addr);
-
-    // Если инициализация структуры адреса завершилась с ошибкой,
-    // выведем сообщением об этом и завершим выполнение программы
-    if (result != 0) {
-        log.write("!!! ERROR !!! getaddrinfo failed.");
-        return 1;
-    }
-
-    // Создание сокета
-    listen_socket_fd = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
-    // Если создание сокета завершилось с ошибкой, выводим сообщение,
-    // освобождаем память, выделенную под структуру addr
-    if (listen_socket_fd == -1) {
-        log.write("!!! ERROR !!! Error creating socket");
-        freeaddrinfo(addr);
-        return 1;
-    }
-
-    // Привязываем сокет к IP-адресу
-    result = bind(listen_socket_fd, addr->ai_addr, (int)addr->ai_addrlen);
-
-    // Если привязать адрес к сокету не удалось, то выводим сообщение
-    // об ошибке, освобождаем память, выделенную под структуру addr.
-    // и закрываем открытый сокет.
-    if (result == -1)
-    {
-        log.write("!!! ERROR !!! bind error");
-        freeaddrinfo(addr);
-        close(listen_socket_fd);
-        return 1;
-    }
-
-    // Инициализируем слушающий сокет
-    if (listen(listen_socket_fd, SOMAXCONN) == -1)
-    {
-        log.write("!!! ERROR !!! listen failed with error");
-        close(listen_socket_fd);
+        std::cerr << e.what() << std::endl;
         return 1;
     }
     
+    try
+    {
+        server = new tcp::Server(ip, port);
+    } catch (tcp::bindSocketException& e)
+    {
+        std::cout << "Exception: " << e.what() << std::endl;
+        return 1;
+    }
+
+    int result = server->listen();
+    if(result == -1)
+    {
+        log.write("!!! ERROR !!! listen");
+        return 1;
+    }
+
     std::cout << "Listening on port " + port << std::endl;
 
     // для того чтобы программа не завершалась после первого подключения
@@ -138,9 +180,10 @@ int main()
         std::stringstream request;       // сюда будет записыватся сообщение от клиента
         // Принимаем входящие соединения,
         // сохраняем дескриптор клиента для отправки ему сообщений
-        int client_socket_fd = accept(listen_socket_fd, NULL, NULL);
+        tcp::Socket client_socket = server->accept();
+        std::ifstream file; // file to send to client
         
-        if (client_socket_fd == -1)
+        if (!client_socket.ok())
         {
             log.write("!!! ERROR !!! accept failed");
             return 1;
@@ -149,13 +192,12 @@ int main()
         const int max_client_buffer_size = 1024;
         char buf[max_client_buffer_size];
 
-        result = recv(client_socket_fd, buf, max_client_buffer_size, 0);
+        int result = client_socket.recv(buf, max_client_buffer_size);
 
         if (result == -1)
         {
             // ошибка получения данных
             log.write("!!! ERROR !!! recv failed");
-            close(client_socket_fd);
         }
         else if (result == 0)
         {
@@ -177,29 +219,26 @@ int main()
             auto parsedRequest = parseRequest(request.str());
             
             std::string s;
-            std::cout << parsedRequest["URL"] << std::endl;
             s = parsedRequest["URL"];
             log.write("Request url " + s);
-            if(s == "/end")
-            {
-                break;
-            }
+
+            if(s == "/end")break;
+
             // Если запрашивается видео mp4
             if(s.find(".mp4") != std::string::npos)
             {
-                std::ifstream video("../public" + s);
-                log.write("Sending video: " + s);
-                if(video)
+                file.open(PATH_TO_PUBLIC + s);
+                if(file)
                 {
-                    response_body << video.rdbuf();
-                    video.close();
+                    response_body << file.rdbuf();
+                    std::cout << response_body.str().length() << std::endl;
                 } else {
                     log.write("!!! ERROR !!! Unable to open video file");
                 }
 
                 // Формируем весь ответ вместе с заголовками
                 // отправка файла по частям
-                unsigned long read_chunk = std::pow(2, 10) * 500; // 10Mb данных
+                unsigned long read_chunk = std::pow(2, 10) * 500 ; // 500 Kb данных
                 std::string read_str;
                 int rangeStart = 0;
                 
@@ -215,7 +254,6 @@ int main()
                     read_str = response_body.str().substr(rangeStart, response_body.str().length() - rangeStart);
                 }
 
-                log.write("Bytes read: " + std::to_string(read_str.length()) + " Buf size: " + std::to_string(read_str.length()));
                 response << "HTTP/1.1 206 Partial Content\r\n"
                 << "Content-Range: bytes " << parsedRequest["Range"] << "-" << (rangeStart + read_str.length() - 1) << "/" << response_body.str().length() << "\r\n"
                 << "Accept-Ranges: bytes\r\n"
@@ -229,12 +267,10 @@ int main()
             }
             else if(s.find(".webm") != std::string::npos)
             {
-                std::ifstream video("../public" + s);
-                log.write("Sending video: " + s);
-                if(video)
+                file.open(PATH_TO_PUBLIC + s);
+                if(file)
                 {
-                    response_body << video.rdbuf();
-                    video.close();
+                    response_body << file.rdbuf();
                 } else {
                     log.write("!!! ERROR !!! Unable to open video file");
                 }
@@ -269,16 +305,14 @@ int main()
 
                 response << read_str;
             }
-            else if(urls.find(s) != urls.end())//s.find(".html") != std::string::npos
+            else if(urls.find(s) != urls.end())
             {
-                // Данные успешно получены
-                // формируем тело ответа из html файла
-                std::ifstream file(".." + urls[s]);
+                file.open(".." + urls[s]);
                 if(file)
                 {
-                    log.write("Sending html file: " + s);
-                    response_body << file.rdbuf();
-                    file.close();
+                    std::stringstream body;
+                    body << file.rdbuf();
+                    response_body << createHtmlPage(body.str());
                 } else {
                     log.write("!!! ERROR !!! Unable to open file");
                 }
@@ -293,14 +327,10 @@ int main()
             }
             else if (s.find(".css") != std::string::npos)
             {
-                // Данные успешно получены
-                // формируем тело ответа из html файла
-                std::ifstream file("../public" + s);
+                file.open(PATH_TO_PUBLIC + s);
                 if(file)
                 {
-                    log.write("Sending html file: " + s);
                     response_body << file.rdbuf();
-                    file.close();
                 } else {
                     log.write("!!! ERROR !!!  Unable to open style file");
                 }
@@ -313,16 +343,29 @@ int main()
                     << "\r\n\r\n"
                     << response_body.str();
             }
-            else if(s.find(".js") != std::string::npos)
+            else if(s.find(".png") != std::string::npos)
             {
-                // Данные успешно получены
-                // формируем тело ответа из html файла
-                std::ifstream file("../public" + s);
+                file.open(PATH_TO_PUBLIC + s);
                 if(file)
                 {
-                    log.write("Sending html file: " + s);
                     response_body << file.rdbuf();
-                    file.close();
+                } else {
+                    log.write("!!! ERROR !!! Unable to open icon file");
+                }
+
+                response << "HTTP/1.1 200 OK\r\n"
+                    << "Version: HTTP/1.1\r\n"
+                    << "Content-Type: image/png\r\n"
+                    << "Content-Length: " << response_body.str().length()
+                    << "\r\n\r\n"
+                    << response_body.str();
+            }
+            else if(s.find(".js") != std::string::npos)
+            {
+                file.open(PATH_TO_PUBLIC + s);
+                if(file)
+                {
+                    response_body << file.rdbuf();
                 } else {
                     log.write("!!! ERROR !!! Unable to open style file");
                 }
@@ -336,12 +379,10 @@ int main()
                     << response_body.str();
             } else {
                 // url not Found
-                std::ifstream file("../public/html/constants/404.html");
+                file.open(PATH_TO_404_HTML);
                 if(file)
                 {
-                    log.write("Sending html file: 404.html");
                     response_body << file.rdbuf();
-                    file.close();
                 } else {
                     log.write("!!! ERROR !!! Unable to open style file");
                 }
@@ -353,22 +394,21 @@ int main()
                     << "\r\n\r\n"
                     << response_body.str();
             }
+            file.close();
             // Отправляем ответ клиенту с помощью функции send
-            result = send(client_socket_fd, response.str().c_str(), response.str().length(), 0);
+            result = client_socket.send(response.str());
 
-            // произошла ошибка при отправле данных
-            if (result == -1) {
+            // произошла ошибка при отправке данных
+            if (result == -1)
+            {
                 log.write("!!! ERROR !!! send failed");
             }
             log.write("\\\\\\\\ REQUEST END ////");
-            // Закрываем соединение с клиентом
-            close(client_socket_fd);
         }
     }
 
-    // Убираем за собой
+    // clean up
+    delete server;
     log.write("<<< SERVER WORK END >>>");
-    close(listen_socket_fd);
-    freeaddrinfo(addr);
     return 0;
 }

@@ -12,14 +12,14 @@ public:
     const char* what();
 };
 
-class serverLog
+class ServerLog
 {
 public:
-    serverLog(){};
-    serverLog(const std::string& filename);
+    ServerLog(){};
+    ServerLog(const std::string& filename);
     void open(const std::string& filename);
     void write(const std::string& s);
-    ~serverLog();
+    ~ServerLog();
 
 private:
     std::ofstream server_log;

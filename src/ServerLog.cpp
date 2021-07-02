@@ -1,11 +1,11 @@
-#include "serverLog.h"
+#include "ServerLog.h"
 
 const char* FileOpenException::what()
 {
     return "Error opening file";
 }
 
-serverLog::serverLog(const std::string& filename)
+ServerLog::ServerLog(const std::string& filename)
 {
     server_log.open(filename);
     if(server_log)
@@ -19,7 +19,7 @@ serverLog::serverLog(const std::string& filename)
     }
 }
 
-void serverLog::open(const std::string& filename)
+void ServerLog::open(const std::string& filename)
 {
     server_log.open(filename);
     if(server_log)
@@ -33,12 +33,12 @@ void serverLog::open(const std::string& filename)
     }  
 }
 
-void serverLog::write(const std::string& s)
+void ServerLog::write(const std::string& s)
 {
     server_log << s << std::endl;
 }
 
-serverLog::~serverLog()
+ServerLog::~ServerLog()
 {
     server_log.close();
 }
