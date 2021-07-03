@@ -9,6 +9,8 @@
 #include <map>
 #include <math.h>
 #include <exception>
+#include <memory>
+#include <vector>
 
 #include "ServerLog.h"
 #include "Server.h"
@@ -227,11 +229,10 @@ int main()
             // Если запрашивается видео mp4
             if(s.find(".mp4") != std::string::npos)
             {
-                file.open(PATH_TO_PUBLIC + s);
+                file.open(PATH_TO_PUBLIC + s, std::ios::binary);
                 if(file)
                 {
-                    response_body << file.rdbuf();
-                    std::cout << response_body.str().length() << std::endl;
+                   // response_body << file.rdbuf();
                 } else {
                     log.write("!!! ERROR !!! Unable to open video file");
                 }
@@ -247,15 +248,30 @@ int main()
                     rangeStart = std::stoi(parsedRequest["Range"]);
                 }
 
-                if(rangeStart + read_chunk <= response_body.str().length())
+                /*if(rangeStart + read_chunk <= response_body.str().length())
                 {
                     read_str = response_body.str().substr(rangeStart, read_chunk);
                 } else {
                     read_str = response_body.str().substr(rangeStart, response_body.str().length() - rangeStart);
+                }*/
+
+                char ch;
+                read_str = "";
+                file.seekg(rangeStart, file.beg);
+                int i = 0;
+                while( file.get(ch) && ch == '\n');
+                read_str += ch;
+                while (read_str.length() < read_chunk && file.get(ch)) {
+                    read_str += ch;
                 }
 
+                file.clear();
+                file.seekg(0, file.end);
+                int fileLenght = file.tellg();
+                file.seekg(0, file.beg);
+
                 response << "HTTP/1.1 206 Partial Content\r\n"
-                << "Content-Range: bytes " << parsedRequest["Range"] << "-" << (rangeStart + read_str.length() - 1) << "/" << response_body.str().length() << "\r\n"
+                << "Content-Range: bytes " << rangeStart << "-" << (rangeStart + read_str.length() - 1) << "/" << fileLenght << "\r\n"
                 << "Accept-Ranges: bytes\r\n"
                 << "Content-Type: video/mp4\r\n"
                 << "Content-Length: " << read_str.length()
