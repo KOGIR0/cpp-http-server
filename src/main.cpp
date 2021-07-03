@@ -1,20 +1,14 @@
 #include <iostream>
 #include <sstream>
 #include <string>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <unistd.h>
-#include <fstream>
 #include <map>
 #include <math.h>
 #include <exception>
-#include <memory>
-#include <vector>
 
 #include "ServerLog.h"
 #include "Server.h"
 #include "Socket.h"
+#include "File.h"
 
 #define PATH_TO_PUBLIC         "../public"
 #define PATH_TO_404_HTML       std::string(PATH_TO_PUBLIC) + "/html/constants/404.html"
@@ -141,7 +135,7 @@ int main()
     std::string ip = "127.0.0.1"; // ip адресс сервера
     ServerLog log;
     tcp::Server* server;
-
+    // url for different pages(map<url, path_to_file>)
     std::map<std::string, std::string> urls = loadURLs();
 
     // создаем лог фаил
@@ -175,20 +169,19 @@ int main()
 
     // для того чтобы программа не завершалась после первого подключения
     // добавляем бесконечный цикл
-    while(1)
+    while(true)
     {
         std::stringstream response;      // сюда будет записываться ответ клиенту
-        std::stringstream response_body; // тело ответа
         std::stringstream request;       // сюда будет записыватся сообщение от клиента
         // Принимаем входящие соединения,
         // сохраняем дескриптор клиента для отправки ему сообщений
         tcp::Socket client_socket = server->accept();
-        std::ifstream file; // file to send to client
+        in::File file; // file which contains data to send to client
         
         if (!client_socket.ok())
         {
             log.write("!!! ERROR !!! accept failed");
-            return 1;
+            continue;
         }
 
         const int max_client_buffer_size = 1024;
@@ -220,27 +213,24 @@ int main()
             request << buf;
             auto parsedRequest = parseRequest(request.str());
             
-            std::string s;
-            s = parsedRequest["URL"];
-            log.write("Request url " + s);
-
-            if(s == "/end")break;
-
+            std::string Url_path;
+            Url_path = parsedRequest["URL"];
+            log.write("Request url " + Url_path);
+            
             // Если запрашивается видео mp4
-            if(s.find(".mp4") != std::string::npos)
+            if(Url_path.find(".mp4") != std::string::npos)
             {
-                file.open(PATH_TO_PUBLIC + s, std::ios::binary);
-                if(file)
+                file.open(PATH_TO_PUBLIC + Url_path);
+
+                if(!file.ok())
                 {
-                   // response_body << file.rdbuf();
-                } else {
                     log.write("!!! ERROR !!! Unable to open video file");
+                    continue;
                 }
 
                 // Формируем весь ответ вместе с заголовками
                 // отправка файла по частям
                 unsigned long read_chunk = std::pow(2, 10) * 500 ; // 500 Kb данных
-                std::string read_str;
                 int rangeStart = 0;
                 
                 if(parsedRequest.find("Range") != parsedRequest.end())
@@ -248,53 +238,31 @@ int main()
                     rangeStart = std::stoi(parsedRequest["Range"]);
                 }
 
-                /*if(rangeStart + read_chunk <= response_body.str().length())
-                {
-                    read_str = response_body.str().substr(rangeStart, read_chunk);
-                } else {
-                    read_str = response_body.str().substr(rangeStart, response_body.str().length() - rangeStart);
-                }*/
-
-                char ch;
-                read_str = "";
-                file.seekg(rangeStart, file.beg);
-                int i = 0;
-                while( file.get(ch) && ch == '\n');
-                read_str += ch;
-                while (read_str.length() < read_chunk && file.get(ch)) {
-                    read_str += ch;
-                }
-
-                file.clear();
-                file.seekg(0, file.end);
-                int fileLenght = file.tellg();
-                file.seekg(0, file.beg);
-
+                std::string read_str = file.read(rangeStart, read_chunk);
+                
                 response << "HTTP/1.1 206 Partial Content\r\n"
-                << "Content-Range: bytes " << rangeStart << "-" << (rangeStart + read_str.length() - 1) << "/" << fileLenght << "\r\n"
-                << "Accept-Ranges: bytes\r\n"
-                << "Content-Type: video/mp4\r\n"
-                << "Content-Length: " << read_str.length()
-                << "\r\n\r\n";
+                    << "Content-Range: bytes " << rangeStart << "-"
+                    << (rangeStart + read_str.length()) << "/" << file.size() << "\r\n"
+                    << "Accept-Ranges: bytes\r\n"
+                    << "Content-Type: video/mp4\r\n"
+                    << "Content-Length: " << read_str.length()
+                    << "\r\n\r\n";
 
                 log.write("Response header\n" + response.str() + '\n');
 
                 response << read_str;
             }
-            else if(s.find(".webm") != std::string::npos)
+            else if(Url_path.find(".webm") != std::string::npos)
             {
-                file.open(PATH_TO_PUBLIC + s);
-                if(file)
+                file.open(PATH_TO_PUBLIC + Url_path);
+                if(!file.ok())
                 {
-                    response_body << file.rdbuf();
-                } else {
                     log.write("!!! ERROR !!! Unable to open video file");
                 }
 
                 // Формируем весь ответ вместе с заголовками
                 // отправка файла по частям
                 unsigned long read_chunk = std::pow(2, 10) * 500;
-                std::string read_str;
                 int rangeStart = 0;
                 
                 if(parsedRequest.find("Range") != parsedRequest.end())
@@ -302,33 +270,28 @@ int main()
                     rangeStart = std::stoi(parsedRequest["Range"]);
                 }
 
-                if(rangeStart + read_chunk <= response_body.str().length())
-                {
-                    read_str = response_body.str().substr(rangeStart, read_chunk);
-                } else {
-                    read_str = response_body.str().substr(rangeStart, response_body.str().length() - rangeStart);
-                }
+                std::string read_str = file.read(rangeStart, read_chunk);
 
                 log.write("Bytes read: " + std::to_string(read_str.length()) + " In buf: " + std::to_string(read_str.length()));
                 response << "HTTP/1.1 206 Partial Content\r\n"
-                << "Content-Range: bytes " << parsedRequest["Range"] << "-" << (rangeStart + read_str.length() - 1) << "/" << response_body.str().length() << "\r\n"
-                << "Accept-Ranges: bytes\r\n"
-                << "Content-Type: video/webm\r\n"
-                << "Content-Length: " << read_str.length()
-                << "\r\n\r\n";
+                    << "Content-Range: bytes " << rangeStart << "-"
+                    << (rangeStart + read_str.length()) << "/" << file.size() << "\r\n"
+                    << "Accept-Ranges: bytes\r\n"
+                    << "Content-Type: video/webm\r\n"
+                    << "Content-Length: " << read_str.length()
+                    << "\r\n\r\n";
 
                 log.write("Response header\n" + response.str() + '\n');
 
                 response << read_str;
             }
-            else if(urls.find(s) != urls.end())
+            else if(urls.find(Url_path) != urls.end()) // if url return html page
             {
-                file.open(".." + urls[s]);
-                if(file)
+                file.open(".." + urls[Url_path]);
+                std::string html; // string to store html page
+                if(file.ok())
                 {
-                    std::stringstream body;
-                    body << file.rdbuf();
-                    response_body << createHtmlPage(body.str());
+                    html = createHtmlPage(file.read(0, file.size()));
                 } else {
                     log.write("!!! ERROR !!! Unable to open file");
                 }
@@ -337,16 +300,17 @@ int main()
                 response << "HTTP/1.1 200 OK\r\n"
                     << "Version: HTTP/1.1\r\n"
                     << "Content-Type: text/html; charset=utf-8\r\n"
-                    << "Content-Length: " << response_body.str().length()
+                    << "Content-Length: " << html.length()
                     << "\r\n\r\n"
-                    << response_body.str();
+                    << html;
             }
-            else if (s.find(".css") != std::string::npos)
+            else if (Url_path.find(".css") != std::string::npos)
             {
-                file.open(PATH_TO_PUBLIC + s);
-                if(file)
+                file.open(PATH_TO_PUBLIC + Url_path);
+                std::string css;
+                if(file.ok())
                 {
-                    response_body << file.rdbuf();
+                    css = file.read(0, file.size());
                 } else {
                     log.write("!!! ERROR !!!  Unable to open style file");
                 }
@@ -355,16 +319,17 @@ int main()
                 response << "HTTP/1.1 200 OK\r\n"
                     << "Version: HTTP/1.1\r\n"
                     << "Content-Type: text/css\r\n"
-                    << "Content-Length: " << response_body.str().length()
+                    << "Content-Length: " << css.length()
                     << "\r\n\r\n"
-                    << response_body.str();
+                    << css;
             }
-            else if(s.find(".png") != std::string::npos)
+            else if(Url_path.find(".png") != std::string::npos)
             {
-                file.open(PATH_TO_PUBLIC + s);
-                if(file)
+                file.open(PATH_TO_PUBLIC + Url_path);
+                std::string png;
+                if(file.ok())
                 {
-                    response_body << file.rdbuf();
+                    png = file.read(0, file.size());
                 } else {
                     log.write("!!! ERROR !!! Unable to open icon file");
                 }
@@ -372,16 +337,17 @@ int main()
                 response << "HTTP/1.1 200 OK\r\n"
                     << "Version: HTTP/1.1\r\n"
                     << "Content-Type: image/png\r\n"
-                    << "Content-Length: " << response_body.str().length()
+                    << "Content-Length: " << png.length()
                     << "\r\n\r\n"
-                    << response_body.str();
+                    << png;
             }
-            else if(s.find(".js") != std::string::npos)
+            else if(Url_path.find(".js") != std::string::npos)
             {
-                file.open(PATH_TO_PUBLIC + s);
-                if(file)
+                file.open(PATH_TO_PUBLIC + Url_path);
+                std::string js;
+                if(file.ok())
                 {
-                    response_body << file.rdbuf();
+                    js = file.read(0, file.size());
                 } else {
                     log.write("!!! ERROR !!! Unable to open style file");
                 }
@@ -390,15 +356,16 @@ int main()
                 response << "HTTP/1.1 200 OK\r\n"
                     << "Version: HTTP/1.1\r\n"
                     << "Content-Type: text/js\r\n"
-                    << "Content-Length: " << response_body.str().length()
+                    << "Content-Length: " << js.length()
                     << "\r\n\r\n"
-                    << response_body.str();
+                    << js;
             } else {
                 // url not Found
                 file.open(PATH_TO_404_HTML);
-                if(file)
+                std::string notFound;
+                if(file.ok())
                 {
-                    response_body << file.rdbuf();
+                    notFound = file.read(0, file.size());
                 } else {
                     log.write("!!! ERROR !!! Unable to open style file");
                 }
@@ -406,11 +373,10 @@ int main()
                 response << "HTTP/1.1 404 Not Found\r\n"
                     << "Version: HTTP/1.1\r\n"
                     << "Content-Type: text/html\r\n"
-                    << "Content-Length: " << response_body.str().length()
+                    << "Content-Length: " << notFound.length()
                     << "\r\n\r\n"
-                    << response_body.str();
+                    << notFound;
             }
-            file.close();
             // Отправляем ответ клиенту с помощью функции send
             result = client_socket.send(response.str());
 
