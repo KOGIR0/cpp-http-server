@@ -8,6 +8,7 @@ add_executable(server
     src/Server.cpp
     src/Socket.cpp
     src/File.cpp
+    src/Request.cpp
     )
 target_include_directories(server PRIVATE include)
 

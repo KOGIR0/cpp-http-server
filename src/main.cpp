@@ -10,40 +10,13 @@
 #include "Server.h"
 #include "Socket.h"
 #include "File.h"
+#include "Request.h"
 
 #define PATH_TO_PUBLIC         "../public"
 #define PATH_TO_404_HTML       std::string(PATH_TO_PUBLIC) + "/html/constants/404.html"
 #define PATH_TO_HEADER         std::string(PATH_TO_PUBLIC) + "/html/constants/header.html"
 #define PATH_TO_RESOURCES_HTML std::string(PATH_TO_PUBLIC) + "/html/constants/resources.html"
 #define PATH_TO_CONFIG         "../.config"
-
-// serverLog file to strore server info
-ServerLog serverLog;
-
-std::map<std::string, std::string> parseRequest(std::string req)
-{
-    std::stringstream ss(req);
-    std::string next;
-    
-    // get type of request(GET, POST ...)
-    ss >> next;
-    std::map<std::string, std::string> parsedReq;
-    parsedReq["Type"] = next;
-    
-    // get url
-    ss >> next;
-    parsedReq["URL"] = next;
-
-    // get range
-    if(req.find("Range: ") != std::string::npos)
-    {
-        ss.seekg(req.find("Range: "));
-        ss >> next >> next;
-        parsedReq["Range"] = next.substr(next.find('=') + 1, next.find('-') - 6);
-    }
-
-    return parsedReq;
-}
 
 std::string getPort()
 {
@@ -76,30 +49,30 @@ std::string getPort()
 std::string createHtmlPage(std::string body)
 {
     // page header
-    std::ifstream header(PATH_TO_HEADER);
+    in::File header(PATH_TO_HEADER);
     // *.ccs and *.js common for every page
-    std::ifstream resources(PATH_TO_RESOURCES_HTML);
+    in::File resources(PATH_TO_RESOURCES_HTML);
     // page start
     std::string result = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Piki</title>";
 
-    if(header && resources)
+    if(header.ok() && resources.ok())
     {
-        std::stringstream ss;
         // add common resources(*.css, *.js) to page head
-        ss << resources.rdbuf();
-        result += ss.str();
+        result += resources.read(0, resources.size());
 
         result += "</head><body>";  // close head and open body tags
         
         // add header to the page
-        ss << header.rdbuf();
-        result += ss.str();
+        result += header.read(0, header.size());
 
-        result += body + "</body></html>"; // close body and html tags
+        // add body to the page
+        result += body;
+
+        // add footer to the page
+        //result += footer.read(0, header.size());
+
+        result += "</body></html>"; // close body and html tags
     }
-
-    header.close();
-    resources.close();
 
     return result;
 }
@@ -128,11 +101,6 @@ std::map<std::string, std::string> loadURLs()
             line >> url >> pathToFile;
             result[url] = pathToFile;
         }
-    }
-
-    for(auto p : result)
-    {
-        std::cout << p.first << " " << p.second << std::endl;
     }
     
     return result;
@@ -169,18 +137,12 @@ inline std::string fileFormat(const std::string& path)
 
 // creates http response
 // response - response storage
-std::stringstream createResponse(std::map<std::string, std::string> request)
+std::stringstream createResponse(Request request)
 {
     in::File file; // file which contains data to send to client
     std::stringstream response;
     std::string Url_path = request["URL"];
     std::string pathToFile = PATH_TO_PUBLIC + Url_path;
-
-    serverLog.write("Request url " + Url_path);
-    if(fileExists(pathToFile))
-    {
-        serverLog.write("File format " + fileFormat(pathToFile));
-    }
 
     std::string format = fileFormat(pathToFile);
     // send video file
@@ -190,7 +152,6 @@ std::stringstream createResponse(std::map<std::string, std::string> request)
 
         if(!file.ok())
         {
-            serverLog.write("!!! ERROR !!! Unable to open video file");
             return response;
         }
 
@@ -199,7 +160,7 @@ std::stringstream createResponse(std::map<std::string, std::string> request)
         unsigned long read_chunk = std::pow(2, 10) * 500; // 500 Kb данных
         int rangeStart = 0;
         
-        if(request.find("Range") != request.end())
+        if(request.find("Range"))
         {
             rangeStart = std::stoi(request["Range"]);
         }
@@ -214,8 +175,6 @@ std::stringstream createResponse(std::map<std::string, std::string> request)
             << "Content-Length: " << read_str.length()
             << "\r\n\r\n";
 
-        serverLog.write("Response header\n" + response.str() + '\n');
-
         response << read_str;
         return response;
     }
@@ -227,8 +186,6 @@ std::stringstream createResponse(std::map<std::string, std::string> request)
         if(file.ok())
         {
             content = file.read(0, file.size());
-        } else {
-            serverLog.write("!!! ERROR !!!  Unable to open file" + pathToFile);
         }
 
         // Формируем весь ответ вместе с заголовками
@@ -245,15 +202,13 @@ std::stringstream createResponse(std::map<std::string, std::string> request)
     // url for different pages(map<url, path_to_file>)
     std::map<std::string, std::string> urls = loadURLs();
 
-    if(urls.find(Url_path) != urls.end()) // if url return html page
+    if(urls.find(Url_path) != urls.end() && fileExists(".." + urls[Url_path])) // if url return html page
     {
         file.open(".." + urls[Url_path]);
         std::string html; // string to store html page
         if(file.ok())
         {
             html = createHtmlPage(file.read(0, file.size()));
-        } else {
-            serverLog.write("!!! ERROR !!! Unable to open file");
         }
 
         // Формируем весь ответ вместе с заголовками
@@ -267,6 +222,8 @@ std::stringstream createResponse(std::map<std::string, std::string> request)
         return response;
     }
 
+    std::cout << "Sending page not found" << std::endl << std::endl;
+
     // request to unknown url
     // create page not found response
     file.open(PATH_TO_404_HTML);
@@ -274,8 +231,6 @@ std::stringstream createResponse(std::map<std::string, std::string> request)
     if(file.ok())
     {
         notFound = file.read(0, file.size());
-    } else {
-        serverLog.write("!!! ERROR !!! Unable to open style file");
     }
 
     response << "HTTP/1.1 404 Not Found\r\n"
@@ -293,23 +248,17 @@ int main()
     std::string port = getPort(); // номер порта нашего HTTP сервера
     std::string ip = "127.0.0.1"; // ip адресс сервера
     tcp::Server* server;
-
-    // создаем лог фаил
-    try
-    {
-        serverLog.open("server.log");
-    }
-    catch(FileOpenException& e)
-    {
-        std::cerr << e.what() << std::endl;
-        return 1;
-    }
+    // serverLog file to strore server info
+    ServerLog serverLog;
     
     try
     {
+        // create server log
+        serverLog.open("server.log");
+        // create server and start listening for connections
         server = new tcp::Server(ip, port);
         server->listen();
-    } catch (std::exception& e)
+    } catch (const std::exception& e)
     {
         std::cout << "Exception: " << e.what() << std::endl;
         return 1;
@@ -322,7 +271,6 @@ int main()
     while(true)
     {
         std::stringstream response;      // сюда будет записываться ответ клиенту
-        std::stringstream request;       // сюда будет записыватся сообщение от клиента
         // Принимаем входящие соединения,
         // сохраняем дескриптор клиента для отправки ему сообщений
         tcp::Socket client_socket = server->accept();
@@ -359,11 +307,10 @@ int main()
 
             // Для удобства работы запишем полученные данные
             // в stringstream request
-            request << buf;
-            auto parsedRequest = parseRequest(request.str());
+            Request request(buf);
 
             // creating response
-            response = createResponse(parsedRequest);
+            response = createResponse(request);
             
             // Отправляем ответ клиенту с помощью функции send
             result = client_socket.send(response.str());

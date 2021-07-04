@@ -1,22 +1,22 @@
 #include "Server.h"
 
 
-const char* tcp::getaddrinfoException::what()
+const char* tcp::getaddrinfoException::what() const throw()
 {
     return "getaddinfo failed";
 }
 
-const char* tcp::socketCreationException::what()
+const char* tcp::socketCreationException::what() const throw()
 {
     return "error creating socket";
 }
 
-const char* tcp::bindSocketException::what()
+const char* tcp::bindSocketException::what() const throw()
 {
     return "bind socket error";
 }
 
-const char* tcp::listenException::what()
+const char* tcp::listenException::what() const throw()
 {
     return "listen error";
 }
@@ -64,7 +64,7 @@ tcp::Socket tcp::Server::accept()
     return tcp::Socket(this->serverSocket->accept());
 }
 
-int tcp::Server::listen()
+void tcp::Server::listen()
 {
     // Инициализируем слушающий сокет
     if(this->serverSocket->listen(SOMAXCONN) == -1)

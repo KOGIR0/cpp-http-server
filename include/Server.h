@@ -15,25 +15,25 @@ namespace tcp
     class getaddrinfoException : public std::exception
     {
     public:
-        const char* what();
+        const char* what() const throw();
     };
 
     class listenException : public std::exception
     {
     public:
-        const char* what();
+        const char* what() const throw();
     };
 
     class socketCreationException : public std::exception
     {
     public:
-        const char* what();
+        const char* what() const throw();
     };
 
     class bindSocketException : public std::exception
     {
     public:
-        const char* what();
+        const char* what() const throw();
     };
 
     class Server
@@ -41,7 +41,7 @@ namespace tcp
     public:
         Server(std::string ip, std::string port);
         tcp::Socket accept();
-        int listen();
+        void listen();
         ~Server();
 
     private:
