@@ -16,6 +16,11 @@ const char* tcp::bindSocketException::what()
     return "bind socket error";
 }
 
+const char* tcp::listenException::what()
+{
+    return "listen error";
+}
+
 tcp::Server::Server(std::string ip, std::string port)
 {
     hints.ai_family = AF_INET; // AF_INET определяет, что будет
@@ -62,8 +67,10 @@ tcp::Socket tcp::Server::accept()
 int tcp::Server::listen()
 {
     // Инициализируем слушающий сокет
-    return this->serverSocket->listen(SOMAXCONN);
-
+    if(this->serverSocket->listen(SOMAXCONN) == -1)
+    {
+        throw tcp::listenException();
+    }
 }
 
 tcp::Server::~Server()

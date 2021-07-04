@@ -18,6 +18,12 @@ namespace tcp
         const char* what();
     };
 
+    class listenException : public std::exception
+    {
+    public:
+        const char* what();
+    };
+
     class socketCreationException : public std::exception
     {
     public:

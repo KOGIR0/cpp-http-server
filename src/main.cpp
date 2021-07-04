@@ -126,8 +126,13 @@ std::map<std::string, std::string> loadURLs()
         if(key == "URL")
         {
             line >> url >> pathToFile;
+            result[url] = pathToFile;
         }
-        result[url] = pathToFile;
+    }
+
+    for(auto p : result)
+    {
+        std::cout << p.first << " " << p.second << std::endl;
     }
     
     return result;
@@ -169,8 +174,6 @@ std::stringstream createResponse(std::map<std::string, std::string> request)
     in::File file; // file which contains data to send to client
     std::stringstream response;
     std::string Url_path = request["URL"];
-    // url for different pages(map<url, path_to_file>)
-    std::map<std::string, std::string> urls = loadURLs();
     std::string pathToFile = PATH_TO_PUBLIC + Url_path;
 
     serverLog.write("Request url " + Url_path);
@@ -239,6 +242,9 @@ std::stringstream createResponse(std::map<std::string, std::string> request)
         return response;
     }
 
+    // url for different pages(map<url, path_to_file>)
+    std::map<std::string, std::string> urls = loadURLs();
+
     if(urls.find(Url_path) != urls.end()) // if url return html page
     {
         file.open(".." + urls[Url_path]);
@@ -302,18 +308,10 @@ int main()
     try
     {
         server = new tcp::Server(ip, port);
-    } catch (tcp::bindSocketException& e)
+        server->listen();
+    } catch (std::exception& e)
     {
         std::cout << "Exception: " << e.what() << std::endl;
-        return 1;
-    }
-
-    // move to try catch
-    // make listen throw error
-    int result = server->listen();
-    if(result == -1)
-    {
-        serverLog.write("!!! ERROR !!! listen");
         return 1;
     }
 
