@@ -2,4 +2,6 @@
 
 
 ## TODO
-1. Read data from video file by chunks
+1. Add Response class
+2. Move createResponse function to Server Class
+3. Add exception to Server listen function

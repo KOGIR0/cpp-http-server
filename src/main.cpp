@@ -138,7 +138,7 @@ std::map<std::string, std::string> loadURLs()
 inline bool fileExists (const std::string& path)
 {
   struct stat buffer;   
-  return (stat (path.c_str(), &buffer) == 0); 
+  return (stat (path.c_str(), &buffer) == 0);
 }
 
 // find file format
@@ -308,6 +308,8 @@ int main()
         return 1;
     }
 
+    // move to try catch
+    // make listen throw error
     int result = server->listen();
     if(result == -1)
     {
@@ -358,7 +360,7 @@ int main()
             serverLog.write(buf);
 
             // Для удобства работы запишем полученные данные
-            // в stringstrem request
+            // в stringstream request
             request << buf;
             auto parsedRequest = parseRequest(request.str());
 
