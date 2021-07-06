@@ -5,6 +5,7 @@
 #include <math.h>
 #include <exception>
 #include <sys/stat.h>
+#include <memory>
 
 #include "ServerLog.h"
 #include "Server.h"
@@ -16,6 +17,7 @@
 #define PATH_TO_404_HTML       std::string(PATH_TO_PUBLIC) + "/html/constants/404.html"
 #define PATH_TO_HEADER         std::string(PATH_TO_PUBLIC) + "/html/constants/header.html"
 #define PATH_TO_RESOURCES_HTML std::string(PATH_TO_PUBLIC) + "/html/constants/resources.html"
+#define PATH_TO_FOOTER_HTML    std::string(PATH_TO_PUBLIC) + "/html/constants/footer.html"
 #define PATH_TO_CONFIG         "../.config"
 
 std::string getPort()
@@ -52,6 +54,8 @@ std::string createHtmlPage(std::string body)
     in::File header(PATH_TO_HEADER);
     // *.ccs and *.js common for every page
     in::File resources(PATH_TO_RESOURCES_HTML);
+    // page footer
+    in::File footer(PATH_TO_FOOTER_HTML);
     // page start
     std::string result = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Piki</title>";
 
@@ -66,10 +70,10 @@ std::string createHtmlPage(std::string body)
         result += header.read(0, header.size());
 
         // add body to the page
-        result += body;
+        result += "<div id=\"main-content\">" + body + "</div>";
 
         // add footer to the page
-        //result += footer.read(0, header.size());
+        result += footer.read(0, header.size());
 
         result += "</body></html>"; // close body and html tags
     }
@@ -247,7 +251,7 @@ int main()
 {
     std::string port = getPort(); // номер порта нашего HTTP сервера
     std::string ip = "127.0.0.1"; // ip адресс сервера
-    tcp::Server* server;
+    std::unique_ptr<tcp::Server> server;
     // serverLog file to strore server info
     ServerLog serverLog;
     
@@ -256,7 +260,7 @@ int main()
         // create server log
         serverLog.open("server.log");
         // create server and start listening for connections
-        server = new tcp::Server(ip, port);
+        server = std::make_unique<tcp::Server>(ip, port);
         server->listen();
     } catch (const std::exception& e)
     {
@@ -325,7 +329,6 @@ int main()
     }
 
     // clean up
-    delete server;
     serverLog.write("<<< SERVER WORK END >>>");
     return 0;
 }

@@ -9,6 +9,7 @@
 class Request
 {
 public:
+    Request(){}
     Request(const char* requestBuf);
     bool find(const std::string& s);
     std::string operator[](const std::string& s);
