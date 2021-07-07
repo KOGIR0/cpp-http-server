@@ -13,11 +13,11 @@
 #include "Request.h"
 
 #define PATH_TO_PUBLIC         "../public"
+#define PATH_TO_CONFIG         "../.config"
 #define PATH_TO_404_HTML       std::string(PATH_TO_PUBLIC) + "/html/constants/404.html"
 #define PATH_TO_HEADER         std::string(PATH_TO_PUBLIC) + "/html/constants/header.html"
 #define PATH_TO_RESOURCES_HTML std::string(PATH_TO_PUBLIC) + "/html/constants/resources.html"
 #define PATH_TO_FOOTER_HTML    std::string(PATH_TO_PUBLIC) + "/html/constants/footer.html"
-#define PATH_TO_CONFIG         "../.config"
 
 std::string getPort()
 {
@@ -138,19 +138,93 @@ inline std::string fileFormat(const std::string& path)
     return "unknown";
 }
 
-// creates http response
-// response - response storage
-std::stringstream createResponse(Request request)
+class Response
 {
-    in::File file; // file which contains data to send to client
-    std::stringstream response;
-    std::string Url_path = request["URL"];
-    std::string pathToFile = PATH_TO_PUBLIC + Url_path;
-
-    std::string format = fileFormat(pathToFile);
-    // send video file
-    if(fileExists(pathToFile) && (format == "video/mp4" || format == "video/webm"))
+public:
+    Response(Request req)
     {
+        this->response = this->createResponse(req);
+    }
+
+    std::stringstream getResponse()
+    {
+        return std::move(response);
+    }
+
+private:
+    std::stringstream response;
+    // map from type to function
+    std::map<std::string, std::stringstream (Response::*)(Request)> functions = {
+        {"video/mp4", &Response::createMediaResponse},
+        {"video/webm", &Response::createMediaResponse}
+    };
+
+    std::stringstream createResponse(Request request)
+    {
+        std::string Url_path = request["URL"];
+        std::string pathToFile = PATH_TO_PUBLIC + Url_path;
+        std::stringstream response;
+        std::string format = fileFormat(pathToFile);
+
+        // send video file
+        if(fileExists(pathToFile) && (format == "video/mp4" || format == "video/webm"))
+        {
+            return createMediaResponse(request);
+        }
+
+        if(fileExists(pathToFile) && format != "unknown")
+        {
+            return createFileResponse(request);
+        }
+
+        // url for different pages(map<url, path_to_file>)
+        std::map<std::string, std::string> urls = loadURLs();
+
+        // if url return html page
+        if(urls.find(Url_path) != urls.end() && fileExists(".." + urls[Url_path]))
+        {
+            return createHTMLPageResponse(request);
+        }
+
+        std::cout << "Sending page not found" << std::endl << std::endl;
+
+        return createNotFoundResponse(request);
+    }
+
+    std::stringstream createFileResponse(Request request)
+    {
+        in::File file;
+        std::string Url_path = request["URL"];
+        std::string pathToFile = PATH_TO_PUBLIC + Url_path;
+        std::stringstream response;
+        std::string format = fileFormat(pathToFile);
+
+        file.open(pathToFile);
+        std::string content;
+        if(file.ok())
+        {
+            content = file.read(0, file.size());
+        }
+
+        // Формируем весь ответ вместе с заголовками
+        response << "HTTP/1.1 200 OK\r\n"
+            << "Version: HTTP/1.1\r\n"
+            << "Content-Type: " << format <<"\r\n"
+            << "Content-Length: " << content.length()
+            << "\r\n\r\n"
+            << content;
+        
+        return response;
+    }
+
+    std::stringstream createMediaResponse(Request request)
+    {
+        in::File file;
+        std::string Url_path = request["URL"];
+        std::string pathToFile = PATH_TO_PUBLIC + Url_path;
+        std::stringstream response;
+        std::string format = fileFormat(pathToFile);
+
         file.open(pathToFile);
 
         if(!file.ok())
@@ -182,31 +256,14 @@ std::stringstream createResponse(Request request)
         return response;
     }
 
-    if(fileExists(pathToFile) && format != "unknown")
+    std::stringstream createHTMLPageResponse(Request request)
     {
-        file.open(pathToFile);
-        std::string content;
-        if(file.ok())
-        {
-            content = file.read(0, file.size());
-        }
+        in::File file;
+        std::stringstream response;
+        std::string Url_path = request["URL"];
+        // url for different pages(map<url, path_to_file>)
+        std::map<std::string, std::string> urls = loadURLs();
 
-        // Формируем весь ответ вместе с заголовками
-        response << "HTTP/1.1 200 OK\r\n"
-            << "Version: HTTP/1.1\r\n"
-            << "Content-Type: " << format <<"\r\n"
-            << "Content-Length: " << content.length()
-            << "\r\n\r\n"
-            << content;
-        
-        return response;
-    }
-
-    // url for different pages(map<url, path_to_file>)
-    std::map<std::string, std::string> urls = loadURLs();
-
-    if(urls.find(Url_path) != urls.end() && fileExists(".." + urls[Url_path])) // if url return html page
-    {
         file.open(".." + urls[Url_path]);
         std::string html; // string to store html page
         if(file.ok())
@@ -225,26 +282,29 @@ std::stringstream createResponse(Request request)
         return response;
     }
 
-    std::cout << "Sending page not found" << std::endl << std::endl;
-
-    // request to unknown url
-    // create page not found response
-    file.open(PATH_TO_404_HTML);
-    std::string notFound;
-    if(file.ok())
+    std::stringstream createNotFoundResponse(Request request)
     {
-        notFound = file.read(0, file.size());
+        in::File file; // file which contains data to send to client
+        // request to unknown url
+        // create page not found response
+        file.open(PATH_TO_404_HTML);
+        std::stringstream response;
+        std::string notFound;
+        if(file.ok())
+        {
+            notFound = file.read(0, file.size());
+        }
+
+        response << "HTTP/1.1 404 Not Found\r\n"
+            << "Version: HTTP/1.1\r\n"
+            << "Content-Type: text/html\r\n"
+            << "Content-Length: " << notFound.length()
+            << "\r\n\r\n"
+            << notFound;
+
+        return response;
     }
-
-    response << "HTTP/1.1 404 Not Found\r\n"
-        << "Version: HTTP/1.1\r\n"
-        << "Content-Type: text/html\r\n"
-        << "Content-Length: " << notFound.length()
-        << "\r\n\r\n"
-        << notFound;
-
-    return response;
-}
+};
 
 int main()
 {
@@ -312,7 +372,8 @@ int main()
             Request request(buf);
 
             // creating response
-            response = createResponse(request);
+            Response res(request);
+            response = res.getResponse();
             
             // Отправляем ответ клиенту с помощью функции send
             result = client_socket.send(response.str());

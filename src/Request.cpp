@@ -14,7 +14,11 @@ bool Request::find(const std::string& s)
 
 std::string Request::operator[](const std::string& s)
 {
-    return this->parsedRequest[s];
+    if(this->parsedRequest.find(s) != this->parsedRequest.end())
+    {
+        return this->parsedRequest[s];
+    }
+    return "";
 }
 
 std::map<std::string, std::string> Request::parseRequest(std::string req)
