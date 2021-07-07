@@ -4,7 +4,6 @@ project(server)
 
 add_executable(server 
     src/main.cpp
-    src/ServerLog.cpp
     src/Server.cpp
     src/Socket.cpp
     src/File.cpp

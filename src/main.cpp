@@ -7,7 +7,6 @@
 #include <sys/stat.h>
 #include <memory>
 
-#include "ServerLog.h"
 #include "Server.h"
 #include "Socket.h"
 #include "File.h"
