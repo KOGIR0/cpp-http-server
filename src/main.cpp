@@ -252,19 +252,18 @@ int main()
     std::string port = getPort(); // номер порта нашего HTTP сервера
     std::string ip = "127.0.0.1"; // ip адресс сервера
     std::unique_ptr<tcp::Server> server;
-    // serverLog file to strore server info
-    ServerLog serverLog;
+    // redirect stdout and stderr to files to write logging info
+    freopen( "serverLog.txt", "w", stdout );
+    freopen( "serverErrors.txt", "w", stderr );
     
     try
     {
-        // create server log
-        serverLog.open("server.log");
         // create server and start listening for connections
         server = std::make_unique<tcp::Server>(ip, port);
         server->listen();
     } catch (const std::exception& e)
     {
-        std::cout << "Exception: " << e.what() << std::endl;
+        std::cerr << "Exception: " << e.what() << std::endl;
         return 1;
     }
 
@@ -281,7 +280,7 @@ int main()
         
         if (!client_socket.ok())
         {
-            serverLog.write("!!! ERROR !!! accept failed");
+            std::cerr << "!!! ERROR !!! accept failed" << std::endl;
             continue;
         }
 
@@ -293,21 +292,21 @@ int main()
         if (result == -1)
         {
             // ошибка получения данных
-            serverLog.write("!!! ERROR !!! recv failed");
+            std::cerr << "!!! ERROR !!! recv failed" << std::endl;
         }
         else if (result == 0)
         {
             // соединение закрыто клиентом
-            serverLog.write("!!! ERROR !!! connection closed...");
+            std::cerr << "!!! ERROR !!! connection closed..." << std::endl;
         }
         else if (result > 0)
         {
-            serverLog.write("//// REQUEST START \\\\\\\\");
+            std::cout << "//// REQUEST START \\\\\\\\" << std::endl;
             // Мы знаем фактический размер полученных данных, поэтому ставим метку конца строки
             // В буфере запроса.
             buf[result] = '\0';
-            serverLog.write("Data recieved");
-            serverLog.write(buf);
+            std::cout << "Data recieved" << std::endl;
+            std::cout << buf << std::endl;
 
             // Для удобства работы запишем полученные данные
             // в stringstream request
@@ -322,13 +321,13 @@ int main()
             // произошла ошибка при отправке данных
             if (result == -1)
             {
-                serverLog.write("!!! ERROR !!! send failed");
+                std::cerr << "!!! ERROR !!! send failed" << std::endl;
             }
-            serverLog.write("\\\\\\\\ REQUEST END ////");
+            std::cout << "\\\\\\\\ REQUEST END ////" << std::endl << std::endl;
         }
     }
 
     // clean up
-    serverLog.write("<<< SERVER WORK END >>>");
+    std::cout << "<<< SERVER WORK END >>>" << std::endl;
     return 0;
 }
