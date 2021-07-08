@@ -39,6 +39,7 @@ private:
     inline bool fileExists (const std::string& path);
     std::string createHtmlPage(std::string body);
     std::map<std::string, std::string> loadURLs();
+    const std::string getHTTPStatusCodeStr(int statusCode);
 };
 
 #endif
