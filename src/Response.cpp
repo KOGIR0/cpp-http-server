@@ -1,5 +1,7 @@
 #include "Response.h"
 
+#include <regex>
+
 Response::Response(Request req)
 {
     std::string requestType = req["Type"];
@@ -8,8 +10,23 @@ Response::Response(Request req)
         this->response = this->createResponse(req);
     } else if (requestType == "POST")
     {
-        // create post response
+        // create response to post request
+        std::cout << "Data: " << req["Data"] << std::endl;
+        this->response = this->processData(req["Data"]);
     }
+}
+
+std::stringstream Response::processData(std::string data)
+{
+    std::stringstream response;
+    response << "HTTP/1.1 200 " << getHTTPStatusCodeStr(200) << "\r\n"
+        << "Version: HTTP/1.1\r\n"
+        << "Content-Type: " << "text/json" <<"\r\n"
+        << "Content-Length: " << data.length()
+        << "\r\n\r\n"
+        << data;
+
+    return response;
 }
 
 std::stringstream Response::getResponse()

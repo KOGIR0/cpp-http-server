@@ -43,5 +43,21 @@ std::map<std::string, std::string> Request::parseRequest(std::string req)
         parsedReq["Range"] = next.substr(next.find('=') + 1, next.find('-') - 6);
     }
 
+    while(ss >> next)
+    {
+        if(next == "Content-Length:")
+        {
+            ss >> next;
+            parsedReq["Content-Length"] = next;
+            break;
+        }
+    }
+
+    std::string data = ss.str();
+    if(parsedReq.find("Content-Length") != parsedReq.end())
+    {
+        parsedReq["Data"] = data.substr(data.size() - std::stoi(parsedReq["Content-Length"]), std::stoi(parsedReq["Content-Length"]));
+    }
+
     return parsedReq;
 }

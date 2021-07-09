@@ -30,6 +30,8 @@ private:
         {"video/webm", &Response::createMediaResponse}
     };*/
 
+    std::stringstream processData(std::string data);
+
     std::stringstream createResponse(Request request);
     std::stringstream createFileResponse(Request request);
     std::stringstream createMediaResponse(Request request);
