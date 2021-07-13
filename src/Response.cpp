@@ -229,8 +229,11 @@ std::string Response::createHtmlPage(std::string body)
         // add header to the page
         result += header.read(0, header.size());
 
+        // add left side to the page
+        result += "<div id=\"page-content\"><div id=\'left-side\'>";
+
         // add body to the page
-        result += "<div id=\"main-content\">" + body + "</div>";
+        result += "</div><div id=\"main-content\">" + body + "</div><div id=\'right-side\'></div></div>";
 
         // add footer to the page
         result += footer.read(0, header.size());

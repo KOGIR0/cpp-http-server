@@ -15,7 +15,7 @@
 #include "Request.h"
 #include "Response.h"
 
-#define PATH_TO_CONFIG         "../.config"
+#define PATH_TO_CONFIG "../.config"
 
 std::string getPort()
 {
