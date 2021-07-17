@@ -208,23 +208,33 @@ inline bool Response::fileExists (const std::string& path)
     return (stat (path.c_str(), &buffer) == 0);
 }
 
+std::string Response::addHeadToHTML(std::string html)
+{
+    // *.ccs and *.js common for every page
+    in::File resources(PATH_TO_RESOURCES_HTML);
+
+    html += "<head><meta charset=\"utf-8\"><title>Piki</title>";
+    if(resources.ok())
+        html += resources.read(0, resources.size());
+    html += "</head>";
+
+    return html;
+}
+
 std::string Response::createHtmlPage(std::string body)
 {
     // page header
     in::File header(PATH_TO_HEADER);
-    // *.ccs and *.js common for every page
-    in::File resources(PATH_TO_RESOURCES_HTML);
     // page footer
     in::File footer(PATH_TO_FOOTER_HTML);
     // page start
-    std::string result = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Piki</title>";
+    std::string result = "<!DOCTYPE html><html>";
 
-    if(header.ok() && resources.ok())
+    if(header.ok())
     {
-        // add common resources(*.css, *.js) to page head
-        result += resources.read(0, resources.size());
+        result = addHeadToHTML(result);
 
-        result += "</head><body>";  // close head and open body tags
+        result += "<body>";  // close head and open body tags
         
         // add header to the page
         result += header.read(0, header.size());

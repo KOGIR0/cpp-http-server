@@ -40,6 +40,7 @@ private:
     inline std::string fileFormat(const std::string& path);
     inline bool fileExists (const std::string& path);
     std::string createHtmlPage(std::string body);
+    std::string addHeadToHTML(std::string html);
     std::map<std::string, std::string> loadURLs();
     const std::string getHTTPStatusCodeStr(int statusCode);
 };
