@@ -2,4 +2,4 @@
 
 
 ## TODO
-- split createHTMLPage to different functions
+- create HTMLpage class
