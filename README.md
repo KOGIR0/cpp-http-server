@@ -2,4 +2,4 @@
 
 
 ## TODO
-- create HTMLpage class
+- add setMainContent to html::Page class
