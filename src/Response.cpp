@@ -1,4 +1,5 @@
 #include "Response.h"
+#include "html.h"
 
 #include <regex>
 
@@ -137,13 +138,10 @@ std::stringstream Response::createHTMLPageResponse(Request request)
     std::string Url_path = request["URL"];
     // url for different pages(map<url, path_to_file>)
     std::map<std::string, std::string> urls = loadURLs();
-
-    file.open(".." + urls[Url_path]);
+    
     std::string html; // string to store html page
-    if(file.ok())
-    {
-        html = createHtmlPage(file.read(0, file.size()));
-    }
+    html::Page page(PATH_TO_HEADER, PATH_TO_FOOTER_HTML, ".." + urls[Url_path], PATH_TO_RESOURCES_HTML);
+    html = page.getPage();
 
     // Формируем весь ответ вместе с заголовками
     response << "HTTP/1.1 200 " << getHTTPStatusCodeStr(200) << "\r\n"
@@ -206,52 +204,6 @@ inline bool Response::fileExists (const std::string& path)
 {
     struct stat buffer;   
     return (stat (path.c_str(), &buffer) == 0);
-}
-
-std::string Response::addHeadToHTML(std::string html)
-{
-    // *.ccs and *.js common for every page
-    in::File resources(PATH_TO_RESOURCES_HTML);
-
-    html += "<head><meta charset=\"utf-8\"><title>Piki</title>";
-    if(resources.ok())
-        html += resources.read(0, resources.size());
-    html += "</head>";
-
-    return html;
-}
-
-std::string Response::createHtmlPage(std::string body)
-{
-    // page header
-    in::File header(PATH_TO_HEADER);
-    // page footer
-    in::File footer(PATH_TO_FOOTER_HTML);
-    // page start
-    std::string result = "<!DOCTYPE html><html>";
-
-    if(header.ok())
-    {
-        result = addHeadToHTML(result);
-
-        result += "<body>";  // close head and open body tags
-        
-        // add header to the page
-        result += header.read(0, header.size());
-
-        // add left side to the page
-        result += "<div id=\"page-content\"><div id=\'left-side\'>";
-
-        // add body to the page
-        result += "</div><div id=\"main-content\">" + body + "</div><div id=\'right-side\'></div></div>";
-
-        // add footer to the page
-        result += footer.read(0, header.size());
-
-        result += "</body></html>"; // close body and html tags
-    }
-
-    return result;
 }
 
 std::map<std::string, std::string> Response::loadURLs()
