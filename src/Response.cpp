@@ -139,9 +139,8 @@ std::stringstream Response::createHTMLPageResponse(Request request)
     // url for different pages(map<url, path_to_file>)
     std::map<std::string, std::string> urls = loadURLs();
     
-    std::string html; // string to store html page
     html::Page page(PATH_TO_HEADER, PATH_TO_FOOTER_HTML, ".." + urls[Url_path], PATH_TO_RESOURCES_HTML);
-    html = page.getPage();
+    std::string html = page.getPage();
 
     // Формируем весь ответ вместе с заголовками
     response << "HTTP/1.1 200 " << getHTTPStatusCodeStr(200) << "\r\n"

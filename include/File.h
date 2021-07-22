@@ -18,7 +18,7 @@ namespace in
 
         // function skips offset in the begining
         // read n chars from start
-        std::string read(const int start, const int n);
+        std::string read(const int& start, const int& n);
 
     private:
         std::ifstream file;

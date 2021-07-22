@@ -31,7 +31,7 @@ in::File::~File()
     file.close();
 }
 
-std::string in::File::read(const int start, const int n)
+std::string in::File::read(const int& start, const int& n)
 {
     std::string result;
     char ch;
