@@ -1,0 +1,171 @@
+<p>
+    Сегодня мы напишем http сервер на C++ с использованием сокетов. 
+    Наш сервер будет принимать запрос от браузера и отправлять ответ в виде html страницы.
+    Также на нашей html странице мы разместим видеоролик и сделаем так, чтобы наш сервер отправлял его
+    не весь сразу, а по частям.
+</p>
+<p>
+    Для сетевого взаимодействия мы будем использовать сокеты. Таким образом первое, что нам нужно
+    сделать - создать сокет, который будет ждать входящие соединения.
+</p>
+<pre>
+    int main()
+    {
+        struct addrinfo hints;
+        struct addrinfo* addr = NULL;
+        std::string ip = "127.0.0.1";
+        std::string port = "8000";
+
+        hints.ai_family = AF_INET; // AF_INET определяет, что будет
+        // использоваться сеть для работы с сокетом
+        hints.ai_socktype = SOCK_STREAM; // Задаем потоковый тип сокета
+        hints.ai_protocol = IPPROTO_TCP; // Используем протокол TCP
+        hints.ai_flags = AI_PASSIVE; // Сокет будет биндиться на адрес,
+                                    // чтобы принимать входящие соединения
+
+        // Инициализируем структуру, хранящую адрес сокета - addr
+        int result = getaddrinfo(ip.c_str(), port.c_str(), &hints, &addr);
+
+        // Если инициализация структуры адреса завершилась с ошибкой,
+        // выведем сообщением об этом и завершим выполнение программы
+        if (result != 0) {
+            return 1;
+        }
+
+        // Создание сокета
+        int serverSocket = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
+        // Если создание сокета завершилось с ошибкой, выводим сообщение,
+        // освобождаем память, выделенную под структуру addr
+        if (serverSocket == -1) {
+            return 1;
+        }
+
+        // Привязываем сокет к IP-адресу
+        result = bind(serverSocket, addr->ai_addr, (int)addr->ai_addrlen);;
+
+        // Если привязать адрес к сокету не удалось, то выводим сообщение
+        // об ошибке, освобождаем память, выделенную под структуру addr.
+        // и закрываем открытый сокет.
+        if (result == -1)
+        {
+            return 1;
+        }
+
+        // Инициализируем слушающий сокет
+        if(listen(serverSocket, SOMAXCONN) == -1)
+        {
+            return 1;
+        }
+
+        std::cout << "Listening on port " << port << std::endl;
+    }
+    </code>
+</pre>
+<p>
+    Следующим нашим шагом будет ожидание подключения к нашему серверу и обработка запроса в случае
+    удачного подключения. Для того чтобы наш сервер не завершал работу после обработки первого подключения
+    обернем логику обработки соединения в бесконечный цикл.
+</p>
+<pre>
+    <code>
+        // ... инициализация слушающего сокета
+        while(true)
+        {
+            int clientSocket = accept(serverSocket, NULL, NULL);
+            if (clientSocket == -1)
+            {
+                //обработка неудачного подключения
+                std::cerr << "!!! ERROR !!! accept failed" << std::endl;
+            } else {
+                // функция обработки соединения
+                handler(clientSocket);
+            }
+        }
+
+        return 0;
+    </code>
+</pre>
+<p>
+    Далее напишем функцию обработки соединения. Она будет считывать запрос клиента и обробатывать его.
+    После этого вы можете скомпелировать вашу программу, запустить её, открыть браузер и заити по адресу
+    http://localhost:8000/. В браузере у вас ничего не отобразится, однако, в окне с запущенной программой
+    вы должны увидеть запрос, который отправляет ваш браузер на ваш сервер.
+</p>
+<pre>
+    <code>
+        void handler(int clientSocket)
+        {
+            const int maxBufSize = 1024;
+            char buf[maxBufSize];
+
+            int result = recv(clientSocket, buf, maxBufSize, 0);
+            if (result == -1)
+            {
+                // ошибка получения данных
+                std::cerr << "!!! ERROR !!! recv failed" << std::endl;
+            }
+            else if (result == 0)
+            {
+                // соединение закрыто клиентом
+                std::cerr << "!!! ERROR !!! connection closed..." << std::endl;
+            }
+            else if (result > 0)
+            {
+                // Мы знаем фактический размер полученных данных, поэтому ставим метку конца строки
+                // В буфере запроса.
+                buf[result] = '\0';
+                // вывод запроса отправленного на ваш сервер
+                std::cout << "Data recieved" << std::endl;
+                std::cout << buf << std::endl;
+
+                //processUserRequest(buf, client_socket);
+            }
+        }
+    </code>
+</pre>
+<pre>
+    <code>
+        void processUserRequest(const char* buf, const int clientSocket)
+        {
+            // для удобства поместим запрос в stringstream
+            std::stringstream ss(buf);
+            std::string reqType, reqUrl;
+            ss >> reqType >> reqUrl;
+            if(reqType == "GET")
+            {
+                if(reqUrl == "/")
+                {
+                    std::fstream file("../index.html");
+                    std::stringstream html;
+                    if(file)
+                        html << file.rdbuf();
+                    std::stringstream response;
+                    response << "HTTP/1.1 200 OK\r\n"
+                        << "Version: HTTP/1.1\r\n"
+                        << "Content-Type: text/html\r\n"
+                        << "Content-Length: " << html.str().length()
+                        << "\r\n\r\n"
+                        << html.str();
+                    send(clientSocket, response.str().c_str(), response.str().length(), 0);
+                } else if(reqUrl == "/video.webm")
+                {
+                    // process video request
+                } else {
+                    // send page not found response
+                    std::fstream file("../pageNotFound.html");
+                    std::stringstream html;
+                    if(file)
+                        html << file.rdbuf();
+                    std::stringstream response;
+                    response << "HTTP/1.1 200 OK\r\n"
+                        << "Version: HTTP/1.1\r\n"
+                        << "Content-Type: text/html\r\n"
+                        << "Content-Length: " << html.str().length()
+                        << "\r\n\r\n"
+                        << html.str();
+                    send(clientSocket, response.str().c_str(), response.str().length(), 0);
+                }
+            }
+        }
+    </code>
+</pre>

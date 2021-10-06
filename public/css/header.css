@@ -1,0 +1,13 @@
+header
+{
+    display: flex;
+    flex-direction: row;
+    justify-content: space-evenly;
+    background-color: #D3D3D3;
+    color: black;
+}
+
+header div
+{
+    padding: 5px;
+}

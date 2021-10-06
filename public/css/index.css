@@ -1,0 +1,48 @@
+body
+{
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    color: #D3D3D3;
+}
+
+video
+{
+    margin: auto 0 auto 0;
+}
+
+#page-content
+{
+    display: flex;
+    flex-direction: row;
+}
+
+.main-content
+{
+    height: 100%;
+}
+
+code
+{
+    text-align: left;
+    background-color: black;
+}
+
+#main-content
+{
+    width: 60%;
+}
+
+#left-side
+{
+    width: 20%;
+}
+
+#right-side
+{
+    width: 20%;
+}
+
+h1 {
+    text-align: center;
+}

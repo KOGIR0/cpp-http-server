@@ -74,8 +74,8 @@ std::string html::Page::createHead(const std::string& path2resources, const std:
     std::ifstream resources(path2resources);
     std::stringstream html;
 
-    html << "<head><meta charset=\"utf-8\"><title>Piki"
-            << (topicName.size() ? ("-" + topicName) : topicName) + "</title>";
+    html << "<head><meta charset=\"utf-8\"><title>"
+            << (topicName.size() ? (topicName) : topicName) + "</title>";
     if(resources)
     {
         html << resources.rdbuf();

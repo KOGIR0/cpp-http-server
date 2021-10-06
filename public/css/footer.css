@@ -1,0 +1,14 @@
+footer
+{
+    display: flex;
+    flex-direction: row;
+    justify-content: space-evenly;
+    background-color: #D3D3D3;
+    color: black;
+    margin-top: auto;
+}
+
+footer div
+{
+    padding: 5px;
+}
