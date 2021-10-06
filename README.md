@@ -1,5 +1,3 @@
-# C++ HTTP Server
+# C++ HTTP Server App
 
-
-## TODO
-- add setMainContent to html::Page class
+HTTP server app written in c++
